@@ -1,7 +1,6 @@
 import WindowManager from './WindowManager.js'
 
 
-
 const t = THREE;
 let camera, scene, renderer, world;
 let near, far;
@@ -49,6 +48,7 @@ else
 			init();
 		}
 	};
+	
 
 	function init ()
 	{
@@ -57,6 +57,7 @@ else
 		// add a short timeout because window.offsetX reports wrong values before a short period 
 		setTimeout(() => {
 			setupScene();
+			// createParticleSystem();
 			setupWindowManager();
 			resize();
 			updateWindowShape(false);
@@ -64,6 +65,7 @@ else
 			window.addEventListener('resize', resize);
 		}, 500)	
 	}
+	
 
 	function setupScene ()
 	{
@@ -79,14 +81,23 @@ else
 
 		renderer = new t.WebGLRenderer({antialias: true, depthBuffer: true});
 		renderer.setPixelRatio(pixR);
-	    
-	  	world = new t.Object3D();
+		
+		world = new t.Object3D();
 		scene.add(world);
-
+	
 		renderer.domElement.setAttribute("id", "scene");
 		document.body.appendChild( renderer.domElement );
-	}
 
+		// Lights
+		var light = new THREE.AmbientLight( 0x606060 ); // soft white light
+		scene.add( light );
+
+		var directionalLight = new THREE.DirectionalLight( 0xffffff, 1 );
+		directionalLight.position.set( 0, 130, 130);
+		scene.add( directionalLight );
+		
+	}
+	
 	function setupWindowManager ()
 	{
 		windowManager = new WindowManager();
@@ -103,39 +114,138 @@ else
 		windowsUpdated();
 	}
 
+	
 	function windowsUpdated ()
 	{
 		updateNumberOfCubes();
 	}
-
+	
 	function updateNumberOfCubes ()
 	{
 		let wins = windowManager.getWindows();
 
-		// remove all cubes
 		cubes.forEach((c) => {
 			world.remove(c);
 		})
 
 		cubes = [];
 
-		// add new cubes based on the current window setup
 		for (let i = 0; i < wins.length; i++)
 		{
 			let win = wins[i];
 
-			let c = new t.Color();
-			c.setHSL(i * .1, 1.0, .5);
+			let c;
+			if (i == 0) {
+				c = new t.Color('hsl(0, 100%, 50%)');
+			} else if (i == 1) {
+				c = new t.Color('hsl(40, 100%, 53%)');
+			} else {
+				let idBasedHueValue = (win.id % 10) / 10;
+				let hue;
+				if(idBasedHueValue < 0.5) {
+					hue = 240 - (idBasedHueValue * 2 * 60);
+				} else {
+					hue = 360 - ((idBasedHueValue - 0.5) * 2 * 60);
+				}
+				c = new t.Color(`hsl(${hue}, 40%, 80%)`);
+			}
 
 			let s = 100 + i * 50;
-			let cube = new t.Mesh(new t.BoxGeometry(s, s, s), new t.MeshBasicMaterial({color: c , wireframe: true}));
-			cube.position.x = win.shape.x + (win.shape.w * .5);
-			cube.position.y = win.shape.y + (win.shape.h * .5);
+			let radius = s / 2;
 
-			world.add(cube);
-			cubes.push(cube);
+			let sphere = createComplexSphere(radius, c);
+			sphere.position.x = win.shape.x + (win.shape.w * .5);
+			sphere.position.y = win.shape.y + (win.shape.h * .5);
+	
+			world.add(sphere);
+			cubes.push(sphere);
+
 		}
 	}
+
+	
+	function createComplexSphere(radius, color) {
+		let innerSize = radius * 0.5; 
+		let outerSize = radius;
+		let innerColor = color;
+		let outerColor = color;
+	
+		let complexSphere = new THREE.Group();
+	
+		let sphereWireframeInner = new THREE.Mesh(
+			new THREE.IcosahedronGeometry(innerSize, 2),
+			new THREE.MeshLambertMaterial({
+				color: innerColor,
+				wireframe: false,
+				transparent: true,
+				shininess: 0
+			})
+		);
+		complexSphere.add(sphereWireframeInner);
+	
+		let sphereWireframeOuter = new THREE.Mesh(
+			new THREE.IcosahedronGeometry(outerSize, 3),
+			new THREE.MeshLambertMaterial({
+				color: outerColor,
+				wireframe: false,
+				transparent: true,
+				shininess: 0
+			})
+		);
+		complexSphere.add(sphereWireframeOuter);
+	
+
+		let sphereGlassInner = new THREE.Mesh(
+			new THREE.SphereGeometry(innerSize, 32, 32),
+			new THREE.MeshPhongMaterial({
+				color: innerColor,
+				transparent: true,
+				shininess: 25,
+				opacity: 0.3
+			})
+		);
+		complexSphere.add(sphereGlassInner);
+	
+		let sphereGlassOuter = new THREE.Mesh(
+			new THREE.SphereGeometry(outerSize, 32, 32),
+			new THREE.MeshPhongMaterial({
+				color: outerColor,
+				transparent: true,
+				shininess: 25,
+				opacity: 0.3
+			})
+		);
+		complexSphere.add(sphereGlassOuter);
+
+		let particlesOuter = createParticles(outerSize, outerColor);
+		complexSphere.add(particlesOuter);
+	
+		let particlesInner = createParticles(innerSize, innerColor);
+		complexSphere.add(particlesInner);
+	
+		return complexSphere;
+	}
+	
+	function createParticles(size, color) {
+		let geometry = new THREE.Geometry();
+		for (let i = 0; i < 35000; i++) {
+			let x = -1 + Math.random() * 2;
+			let y = -1 + Math.random() * 2;
+			let z = -1 + Math.random() * 2;
+			let d = 1 / Math.sqrt(x * x + y * y + z * z);
+			x *= d * size;
+			y *= d * size;
+			z *= d * size;
+			geometry.vertices.push(new THREE.Vector3(x, y, z));
+		}
+		let material = new THREE.PointsMaterial({
+			size: 0.1,
+			color: color,
+			transparent: true
+		});
+		return new THREE.Points(geometry, material);
+	}
+	
 
 	function updateWindowShape (easing = true)
 	{
@@ -151,7 +261,6 @@ else
 
 		windowManager.update();
 
-
 		// calculate the new position based on the delta between current offset and new offset times a falloff value (to create the nice smoothing effect)
 		let falloff = .05;
 		sceneOffset.x = sceneOffset.x + ((sceneOffsetTarget.x - sceneOffset.x) * falloff);
@@ -163,27 +272,70 @@ else
 
 		let wins = windowManager.getWindows();
 
-
 		// loop through all our cubes and update their positions based on current window positions
 		for (let i = 0; i < cubes.length; i++)
 		{
-			let cube = cubes[i];
+			let complexSphere = cubes[i]; 
 			let win = wins[i];
-			let _t = t;// + i * .2;
+			let _t = t; 
 
 			let posTarget = {x: win.shape.x + (win.shape.w * .5), y: win.shape.y + (win.shape.h * .5)}
+			
+			complexSphere.position.x = complexSphere.position.x + (posTarget.x - complexSphere.position.x) * falloff;
+        	complexSphere.position.y = complexSphere.position.y + (posTarget.y - complexSphere.position.y) * falloff;
 
-			cube.position.x = cube.position.x + (posTarget.x - cube.position.x) * falloff;
-			cube.position.y = cube.position.y + (posTarget.y - cube.position.y) * falloff;
-			cube.rotation.x = _t * .5;
-			cube.rotation.y = _t * .3;
+        
+			complexSphere.rotation.x = _t * .5; 
+			complexSphere.rotation.y = _t * .3; 
+			updateComplexSphere(complexSphere, t);
 		};
 
+		// updateParticles();
 		renderer.render(scene, camera);
 		requestAnimationFrame(render);
 	}
 
-
+	
+	function updateComplexSphere(complexSphere, elapsedTime) {
+		let sphereWireframeInner = complexSphere.children[0];
+		let sphereWireframeOuter = complexSphere.children[1];
+		let sphereGlassInner = complexSphere.children[2];
+		let sphereGlassOuter = complexSphere.children[3];
+		let particlesOuter = complexSphere.children[4];
+		let particlesInner = complexSphere.children[5];
+	
+		sphereWireframeInner.rotation.x += 0.002;
+		sphereWireframeInner.rotation.z += 0.002;
+	  
+		sphereWireframeOuter.rotation.x += 0.001;
+		sphereWireframeOuter.rotation.z += 0.001;
+	  
+		sphereGlassInner.rotation.y += 0.005;
+		sphereGlassInner.rotation.z += 0.005;
+	
+		sphereGlassOuter.rotation.y += 0.01;
+		sphereGlassOuter.rotation.z += 0.01;
+	
+		particlesOuter.rotation.y += 0.0005;
+		particlesInner.rotation.y -= 0.002;
+	
+		var innerShift = Math.abs(Math.cos(((elapsedTime + 2.5) / 20)));
+		var outerShift = Math.abs(Math.cos(((elapsedTime + 5) / 10)));
+	
+		sphereWireframeOuter.material.color.setHSL(0.55, 1, outerShift);
+		sphereGlassOuter.material.color.setHSL(0.55, 1, outerShift);
+		particlesOuter.material.color.setHSL(0.55, 1, outerShift);
+	
+		sphereWireframeInner.material.color.setHSL(0.08, 1, innerShift);
+		particlesInner.material.color.setHSL(0.08, 1, innerShift);
+		sphereGlassInner.material.color.setHSL(0.08, 1, innerShift);
+	
+		sphereWireframeInner.material.opacity = Math.abs(Math.cos((elapsedTime + 0.5) / 0.9) * 0.5);
+		sphereWireframeOuter.material.opacity = Math.abs(Math.cos(elapsedTime / 0.9) * 0.5);
+	
+	}
+	
+	
 	// resize the renderer to fit the window size
 	function resize ()
 	{
